@@ -65,7 +65,7 @@ class iliasSpider(scrapy.Spider):
 			name = rowSel.css("h4.il_ContainerItemTitle a::text").get()
 			href = rowSel.css("div.il_ContainerItemTitle a::attr(href)").get()
 
-			# Handle different types, switch statement for poor people
+			# Handle different href types, switch statement for poor people
 			if "download" in href:
 				# get properties
 				rawProperties = rowSel.css("div.ilListItemSection.il_ItemProperties").get()
@@ -89,6 +89,7 @@ class iliasSpider(scrapy.Spider):
 					)
 				continue
 
+			# Folder
 			if "goto_ilias_uni_fold" in href:
 				newPath = relPath + name.replace(" ","") + os.path.sep
 
@@ -117,7 +118,6 @@ class iliasSpider(scrapy.Spider):
 			print("Can't handle link: %s, %s" % (name,href))
 
 
-	# Verifiy if item should be downloaded
 	def verify_download(self, href, relPath):
 		href = self.items[href]['href']
 		name = self.items[href]['name']
@@ -136,7 +136,7 @@ class iliasSpider(scrapy.Spider):
 
 		# verify if file already exists
 		filename = self.prepFileName(name, ext)
-		path = self.getStoreDir(filename) + relPath + filename
+		path = self.target_dir + relPath + filename
 		if os.path.exists(path):
 			if VERBOSE:
 				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (name, ext))
@@ -152,7 +152,7 @@ class iliasSpider(scrapy.Spider):
 		filename = self.prepFileName(self.items[url]['name'], self.items[url]['ext'])
 		content = response.body
 		
-		storeDir = self.getStoreDir(filename)
+		storeDir = self.target_dir
 
 		if not os.path.exists(storeDir + relPath):
 			os.mkdir(storeDir + relPath)
@@ -178,15 +178,6 @@ class iliasSpider(scrapy.Spider):
 		filename = filename.replace(")","_")
 	
 		return filename + "." + ext
-
-
-	# where to move file to
-	def getStoreDir(self, filename):
-		# if self.slides_id_str in filename:
-		# 	return self.slides_dir
-		# elif self.assignments_id_str in filename:
-		# 	return self.assignments_dir
-		return self.target_dir
 
 
 	# format file size
