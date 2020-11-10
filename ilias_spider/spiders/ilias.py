@@ -49,81 +49,126 @@ class iliasSpider(scrapy.Spider):
 			print("Login succeesful")
 			yield Request(
 				url= self.ilias_url,
-				callback=self.findDownloadLinksAndNames
+				callback=lambda x: self.generic_visit(x,'')
 			)
 
+	# Applicable for crs, fold
+	def generic_visit(self, response, relPath):
+		if VERBOSE:
+			print(" call: generic_visit(response, relPath=%s)" % relPath)
 
-	def findDownloadLinksAndNames(self,response):
 		sel = Selector(response)
-		fnames = sel.css("h4.il_ContainerItemTitle a::text").extract()
-		links = sel.css("div.il_ContainerItemTitle a::attr(href)").extract()
-		# Extract item Properties
-		rawProperties = sel.css("div.ilListItemSection.il_ItemProperties").extract()
-		itemProperties = []
-		for text in rawProperties:
-			# Format: [fileExtension,DownloadSize,Date,[Pages]], pages field does not exist for all items
-			properties = list(map(lambda x: x.strip(),Selector(text=text).css("span.il_ItemProperty::text").extract()))
-			itemProperties.append(properties)
-		# File extensions
-		fextensions = [a[0] for a in itemProperties]
-		fsize = [self.format_fsize(a[1]) for a in itemProperties]
+		rows = sel.css("div.ilCLI.ilObjListRow.row").extract()
 
-		items = zip(fnames,links,fextensions,fsize)
-		for (name,href,ext,size) in items:
-			self.items[href] = {
-				'href': href,
-				'name': name,
-				'ext': ext,
-				'size': size
-			}
+		for row in rows:
+			rowSel = Selector(text=row)
+			name = rowSel.css("h4.il_ContainerItemTitle a::text").get()
+			href = rowSel.css("div.il_ContainerItemTitle a::attr(href)").get()
 
-		for item in self.items.values():
-			if self.verify_item(item):
+			if VERBOSE:
+				print("\tProcessing: %s" % name)
+
+			# Handle different types, switch statement for poor people
+			if "download" in href:
+				# get properties
+				rawProperties = rowSel.css("div.ilListItemSection.il_ItemProperties").get()
+				properties = list(map(lambda x: x.strip(),Selector(text=rawProperties).css("span.il_ItemProperty::text").extract()))
+				
+				ext = properties[0]
+				size = properties[1]
+					
+				self.items[href] = {
+					'href': href,
+					'name': name,
+					'ext': ext,
+					'size': size
+				}
+
+				return
+				if self.verify_download(href,relPath):
+					yield Request(
+						url=href,
+						callback=lambda x: self.store(x,relPath)
+					)
+				continue
+
+			if "goto_ilias_uni_fold" in href:
+				newPath = relPath + name.replace(" ","") + os.path.sep
+
+				if VERBOSE:
+					print("Started: %s, %s" %(relPath,name))
+					print("Searching folder: %s" % newPath)
+
 				yield Request(
-					url = item['href'],
-					callback = self.download
+					url=href,
+					callback=lambda x: self.generic_visit(x,newPath)
 				)
+				continue
+
+			if "goto_ilias_uni_svy" in href:
+				print("Skipping survey: %s" % name)
+				continue
+
+			if "goto_ilias_uni_frm" in href:
+				print("Skipping forum: %s" % name)
+				continue
+
+			if "goto_ilias_uni_grp" in href:
+				print("Skipping group: %s" % name)
+				continue
+
+			print("Can't handle link: %s, %s" % (name,href))
+
 
 	# Verifiy if item should be downloaded
-	def verify_item(self, item):
-		href = item['href']
-		name = item['name']
-		ext = item['ext']
-		size = item['size']
+	def verify_download(self, href, relPath):
+		href = self.items[href]['href']
+		name = self.items[href]['name']
+		ext = self.items[href]['ext']
+		size = self.items[href]['size']
 
 		if not "download" in href:
 			if VERBOSE:
-				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (name, ext))
+				print("Ignoring file, cause: NO_DOWNLOAD_LINK :      %s.%s" % (name, ext))
 			return False
 		
 		if ext in IGNORE_FILE_EXTENSIONS:
 			if VERBOSE:
-				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (name, ext))
+				print("Ignoring file, cause: FILE_EXTENSION_IGNORED : %s.%s" % (name, ext))
 			return False
 
 		# verify if file already exists
 		filename = self.prepFileName(name, ext)
-		path = self.getStoreDir(filename) + filename
+		path = self.getStoreDir(filename) + relPath + filename
 		if os.path.exists(path):
 			if VERBOSE:
-				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (filename, ext))
+				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (name, ext))
 			return False
 
 		return True
 
 
 	# save file
-	def store(self, filename, content):
+	def store(self, response, relPath):
+		url = str(response.url)
+		filename = self.prepFileName(self.items[url]['name'], self.items[url]['ext'])
+		content = response.body
+		
 		storeDir = self.getStoreDir(filename)
+
+		if not os.path.exists(storeDir + relPath):
+			os.mkdir(storeDir + relPath)
+
+		path = storeDir + relPath + filename
 
 		print("Downloading %s to %s" %(filename, storeDir))
 		if PLATFORM == "Linux":
 			# in linux files has to be stored first in the tmp folder
 			with open(TMP_DIR + filename, "wb") as f:
 				f.write(content)
-			os.system("mv " + TMP_DIR + filename + " " + storeDir + filename)
+			os.system("mv " + TMP_DIR + filename + " " + path)
 		elif PLATFORM == "Windows":
-			with open(storeDir + filename, "wb") as f:
+			with open(path, "wb") as f:
 				f.write(content)
 
 
@@ -139,18 +184,12 @@ class iliasSpider(scrapy.Spider):
 
 	# where to move file to
 	def getStoreDir(self, filename):
-		if self.slides_id_str in filename:
-			return self.slides_dir
-		elif self.assignments_id_str in filename:
-			return self.assignments_dir
+		# if self.slides_id_str in filename:
+		# 	return self.slides_dir
+		# elif self.assignments_id_str in filename:
+		# 	return self.assignments_dir
 		return self.target_dir
 
-
-	# download controller
-	def download(self, response):
-		url = str(response.url)
-		filename = self.prepFileName(self.items[url]['name'], self.items[url]['ext'])
-		self.store(filename, response.body)
 
 	# format file size
 	def format_fsize(self, size):
@@ -158,3 +197,4 @@ class iliasSpider(scrapy.Spider):
 		if unit == 'Bytes':
 			unit = ' B'
 		return ('%5.1f %s' % (float(num.replace(',','.')), unit))
+
