@@ -1,7 +1,20 @@
 
 # iliasSpider
 
+Fork from [MisterXY89/iliasSpider](https://github.com/MisterXY89/iliasSpider).
+
 `iliasSpider` is a web scraper which downloads your materials from an ilias course (@Uni Constance) written in python. 
+
+## Functionality
+
+In the current state, the scraper just tries to copy to ilias file system to the computer, creating necessary folders on the way. Everything the spider does not know is ignored.
+
+## Features over original fork
+
+- Correct file extensions
+- Only files which do not exist locally are downloaded
+- Exclusion based on file formats in the [config](config.py). By default .mp4 files are excluded
+- Checks if a file should be downloaded are done before downloading:)
 
 ## Approach
 I am using [scrapy (docs)](https://docs.scrapy.org/en/latest/index.html) to login and download the files. 
@@ -27,12 +40,15 @@ pip https://pip.pypa.io/en/stable/
 	 - follow the [instructions](https://doc.scrapy.org/en/1.1/intro/install.html#windows) to set up scrapy & restart
 	 - `$ pip install keyring`
 
-### Run it
-You can create for every ilias folder a download program via `create.py`.  Simply run it with `pyhton create.py`.
-You will be prompted a few questions to config your spider. Everything you need to know will be explained there.
-
-## Possible Errors
-Since all files are downloaded with a .pdf extension there might occur an error downloading files of another file format. 
-In most cases, it is sufficient to just change the .pdf extension to the correct one.
-If any errors occur, try to restart the program and check your config. If it still occurs open a new [issue](https://github.com/MisterXY89/iliasSpider/issues).
-
+### Configure Spiders
+An example configuration is given in `iliasSpiders.py`:
+```python
+### Spider 1
+c = Config(
+    'vorname.nachname', 
+    'entry url', 
+    '/path/to/download/folder/', 
+    )
+runSpider(c)
+```
+More spiders can be configured by copying this code snippet.

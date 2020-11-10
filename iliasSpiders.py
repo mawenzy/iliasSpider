@@ -8,3 +8,6 @@ c = Config(
     '/path/to/download/folder/', 
     )
 runSpider(c)
+
+### Spider 2
+# ...
