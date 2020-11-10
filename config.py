@@ -31,4 +31,4 @@ TMP_DIR = "/tmp/"
 IGNORE_FILE_EXTENSIONS = ['mp4']
 
 # manage output
-VERBOSE = True
+VERBOSE = False

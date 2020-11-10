@@ -7,6 +7,7 @@ from scrapy.selector import *
 from scrapy.http.request import Request
 from config import *
 from privacy import *
+from urllib.parse import urljoin
 
 class iliasSpider(scrapy.Spider):
 	name = SPIDER_NAME
@@ -62,7 +63,7 @@ class iliasSpider(scrapy.Spider):
 		for row in rows:
 
 			rowSel = Selector(text=row)
-			name = rowSel.css("h4.il_ContainerItemTitle a::text").get()
+			name = rowSel.css("h4.il_ContainerItemTitle a::text").get().replace(" ","")
 			href = rowSel.css("div.il_ContainerItemTitle a::attr(href)").get()
 
 			# Handle different href types, switch statement for poor people
@@ -82,6 +83,8 @@ class iliasSpider(scrapy.Spider):
 				}
 
 				if self.verify_download(href,relPath):
+					print("Downloading %s : %s to %s" %(size, name, self.target_dir + relPath))
+
 					yield Request(
 						url=href,
 						callback=self.store,
@@ -91,7 +94,7 @@ class iliasSpider(scrapy.Spider):
 
 			# Folder
 			if "goto_ilias_uni_fold" in href:
-				newPath = relPath + name.replace(" ","") + os.path.sep
+				newPath = relPath + name + os.path.sep
 
 				if VERBOSE:
 					print("Searching folder: %s" % newPath)
@@ -103,19 +106,56 @@ class iliasSpider(scrapy.Spider):
 				)
 				continue
 
+			# Excercise
+			if "goto_ilias_uni_exc" in href:
+				newPath = relPath + name + os.path.sep,
+
+				if VERBOSE:
+					print("Searching Exercise group: %s" % newPath)
+
+				yield Request(
+					url=href,
+					callback=self.visit_exc,
+					meta={'relPath':newPath}
+				) 
+				continue
+
 			if "goto_ilias_uni_svy" in href:
-				print("Skipping survey: %s" % name)
+				if VERBOSE:
+					print("Skipping survey: %s" % name)
 				continue
 
 			if "goto_ilias_uni_frm" in href:
-				print("Skipping forum: %s" % name)
+				if VERBOSE:
+					print("Skipping forum: %s" % name)
 				continue
 
 			if "goto_ilias_uni_grp" in href:
-				print("Skipping group: %s" % name)
+				if VERBOSE:
+					print("Skipping group: %s" % name)
 				continue
 
 			print("Can't handle link: %s, %s" % (name,href))
+
+
+	def visit_exc(self, response):
+		sel = Selector(response)
+		relPath = response.meta.get('relPath')
+		href = sel.css("li#tab_grades a::attr(href)").get()
+
+		url = urljoin(ILIAS_BASE_URL,href)
+
+		yield Request(
+			url=url,
+			callback=self.visit_abgaben_und_noten,
+			meta={'relPath':relPath}
+		)
+
+	def visit_abgaben_und_noten(self, response):
+		sel = Selector(response)
+		relPath = response.meta.get('relPath')
+		print(response.body)
+
 
 
 	def verify_download(self, href, relPath):
@@ -159,7 +199,6 @@ class iliasSpider(scrapy.Spider):
 
 		path = storeDir + relPath + filename
 
-		print("Downloading %s to %s" %(filename, storeDir))
 		if PLATFORM == "Linux":
 			# in linux files has to be stored first in the tmp folder
 			with open(TMP_DIR + filename, "wb") as f:
