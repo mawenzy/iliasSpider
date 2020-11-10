@@ -49,24 +49,21 @@ class iliasSpider(scrapy.Spider):
 			print("Login succeesful")
 			yield Request(
 				url= self.ilias_url,
-				callback=lambda x: self.generic_visit(x,'')
+				callback=self.generic_visit,
+				meta={'relPath': ''}
 			)
 
 	# Applicable for crs, fold
-	def generic_visit(self, response, relPath):
-		if VERBOSE:
-			print(" call: generic_visit(response, relPath=%s)" % relPath)
-
+	def generic_visit(self, response):
 		sel = Selector(response)
 		rows = sel.css("div.ilCLI.ilObjListRow.row").extract()
+		relPath = response.meta.get('relPath')
 
 		for row in rows:
+
 			rowSel = Selector(text=row)
 			name = rowSel.css("h4.il_ContainerItemTitle a::text").get()
 			href = rowSel.css("div.il_ContainerItemTitle a::attr(href)").get()
-
-			if VERBOSE:
-				print("\tProcessing: %s" % name)
 
 			# Handle different types, switch statement for poor people
 			if "download" in href:
@@ -84,11 +81,11 @@ class iliasSpider(scrapy.Spider):
 					'size': size
 				}
 
-				return
 				if self.verify_download(href,relPath):
 					yield Request(
 						url=href,
-						callback=lambda x: self.store(x,relPath)
+						callback=self.store,
+						meta={'relPath': relPath}
 					)
 				continue
 
@@ -96,12 +93,12 @@ class iliasSpider(scrapy.Spider):
 				newPath = relPath + name.replace(" ","") + os.path.sep
 
 				if VERBOSE:
-					print("Started: %s, %s" %(relPath,name))
 					print("Searching folder: %s" % newPath)
 
 				yield Request(
 					url=href,
-					callback=lambda x: self.generic_visit(x,newPath)
+					callback=self.generic_visit,
+					meta={'relPath':newPath}
 				)
 				continue
 
@@ -149,8 +146,9 @@ class iliasSpider(scrapy.Spider):
 
 
 	# save file
-	def store(self, response, relPath):
+	def store(self, response):
 		url = str(response.url)
+		relPath = response.meta.get('relPath')
 		filename = self.prepFileName(self.items[url]['name'], self.items[url]['ext'])
 		content = response.body
 		
