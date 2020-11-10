@@ -27,3 +27,9 @@ ILIAS_LOGIN_URL = 'https://ilias.uni-konstanz.de/ilias/login.php'
 
 # only needed for linux
 TMP_DIR = "/tmp/"
+
+# ignored file extensions
+IGNORE_FILE_EXTENSIONS = ['mp4']
+
+# manage output
+VERBOSE = True

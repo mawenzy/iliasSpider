@@ -17,7 +17,7 @@ class iliasSpider(scrapy.Spider):
 
 	def __init__(self, username=None, iliasUrl=None, targetDir=None, assignmentsIdStr=None, slidesIdStr=None, assignmentsDir=None, slidesDir=None, *args, **kwargs):
 		super(iliasSpider, self).__init__(*args, **kwargs)
-		self.fDict = {}
+		self.items = {}
 		self.username = username
 		self.ilias_url = iliasUrl
 		self.target_dir = targetDir
@@ -57,19 +57,59 @@ class iliasSpider(scrapy.Spider):
 		sel = Selector(response)
 		fnames = sel.css("h4.il_ContainerItemTitle a::text").extract()
 		links = sel.css("div.il_ContainerItemTitle a::attr(href)").extract()
-		self.fDict = dict(zip(links,fnames))
-		for href in links:
-			yield Request(
-				url = href,
-				callback = self.download
-			)
+		# Extract item Properties
+		rawProperties = sel.css("div.ilListItemSection.il_ItemProperties").extract()
+		itemProperties = []
+		for text in rawProperties:
+			# Format: [fileExtension,DownloadSize,Date,[Pages]], pages field does not exist for all items
+			properties = list(map(lambda x: x.strip(),Selector(text=text).css("span.il_ItemProperty::text").extract()))
+			itemProperties.append(properties)
+		# File extensions
+		fextensions = [a[0] for a in itemProperties]
+		fsize = [self.format_fsize(a[1]) for a in itemProperties]
 
+		items = zip(fnames,links,fextensions,fsize)
+		for (name,href,ext,size) in items:
+			self.items[href] = {
+				'href': href,
+				'name': name,
+				'ext': ext,
+				'size': size
+			}
 
-	# verify if file should be downloaded
-	def verify(self, link):
-		if "download" in link:
-			return True
-		return False
+		for item in self.items.values():
+			if self.verify_item(item):
+				yield Request(
+					url = item['href'],
+					callback = self.download
+				)
+
+	# Verifiy if item should be downloaded
+	def verify_item(self, item):
+		href = item['href']
+		name = item['name']
+		ext = item['ext']
+		size = item['size']
+
+		if not "download" in href:
+			if VERBOSE:
+				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (name, ext))
+			return False
+		
+		if ext in IGNORE_FILE_EXTENSIONS:
+			if VERBOSE:
+				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (name, ext))
+			return False
+
+		# verify if file already exists
+		filename = self.prepFileName(name, ext)
+		path = self.getStoreDir(filename) + filename
+		if os.path.exists(path):
+			if VERBOSE:
+				print("Ignoring file, cause: FILE_ALREADY_DOWNLOADED : %s.%s" % (filename, ext))
+			return False
+
+		return True
 
 
 	# save file
@@ -88,12 +128,13 @@ class iliasSpider(scrapy.Spider):
 
 
 	# prep filename for easier handling
-	def prepFileName(self, filename):
+	def prepFileName(self, filename, ext):
 		filename = filename.replace("/","_")
 		filename = filename.replace(" ","_")
 		filename = filename.replace("(","_")
 		filename = filename.replace(")","_")
-		return filename + ".pdf"
+	
+		return filename + "." + ext
 
 
 	# where to move file to
@@ -108,8 +149,12 @@ class iliasSpider(scrapy.Spider):
 	# download controller
 	def download(self, response):
 		url = str(response.url)
+		filename = self.prepFileName(self.items[url]['name'], self.items[url]['ext'])
+		self.store(filename, response.body)
 
-		# determine if should be downloaded
-		if self.verify(url):
-			filename = self.prepFileName(self.fDict[url])
-			self.store(filename, response.body)
+	# format file size
+	def format_fsize(self, size):
+		num,unit = size.split()
+		if unit == 'Bytes':
+			unit = ' B'
+		return ('%5.1f %s' % (float(num.replace(',','.')), unit))
