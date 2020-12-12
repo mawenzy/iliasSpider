@@ -176,6 +176,7 @@ class iliasSpider(scrapy.Spider):
 
 		# verify if file already exists
 		filename = self.prepFileName(name, ext)
+		relPath = self.prepPath(relPath)
 		path = self.target_dir + relPath + filename
 		if os.path.exists(path):
 			if VERBOSE:
@@ -188,7 +189,7 @@ class iliasSpider(scrapy.Spider):
 	# save file
 	def store(self, response):
 		url = str(response.url)
-		relPath = response.meta.get('relPath')
+		relPath = self.prepPath(response.meta.get('relPath'))
 		filename = self.prepFileName(self.items[url]['name'], self.items[url]['ext'])
 		content = response.body
 		
@@ -215,9 +216,15 @@ class iliasSpider(scrapy.Spider):
 		filename = filename.replace(" ","_")
 		filename = filename.replace("(","_")
 		filename = filename.replace(")","_")
-	
+		
 		return filename + "." + ext
 
+	def prepPath(self, path):
+		path = path.replace(" ","_")
+		path = path.replace("(","_")
+		path = path.replace(")","_")
+
+		return path
 
 	# format file size
 	def format_fsize(self, size):
